@@ -103,4 +103,12 @@
 			<url>https://maven.pkg.github.com/open-game-backend/test</url>
 		</repository>
 	</repositories>
+
+	<distributionManagement>
+		<repository>
+			<id>github</id>
+			<name>GitHub Packages (quests)</name>
+			<url>https://maven.pkg.github.com/open-game-backend/quests</url>
+		</repository>
+	</distributionManagement>
 </project>
