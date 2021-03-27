@@ -4,7 +4,7 @@ import de.opengamebackend.quests.model.entities.QuestCategory;
 import de.opengamebackend.quests.model.repositories.QuestCategoryRepository;
 import de.opengamebackend.quests.model.requests.PutQuestCategoriesRequest;
 import de.opengamebackend.quests.model.requests.PutQuestCategoriesRequestItem;
-import de.opengamebackend.quests.model.responses.GetQuestCategoriesReponseItem;
+import de.opengamebackend.quests.model.responses.GetQuestCategoriesResponseItem;
 import de.opengamebackend.quests.model.responses.GetQuestCategoriesResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -25,10 +25,10 @@ public class QuestService {
     }
 
     public GetQuestCategoriesResponse getQuestCategories() {
-        ArrayList<GetQuestCategoriesReponseItem> categories = new ArrayList<>();
+        ArrayList<GetQuestCategoriesResponseItem> categories = new ArrayList<>();
 
         for (QuestCategory questCategoryEntity : questCategoryRepository.findAll()) {
-            GetQuestCategoriesReponseItem questCategory = new GetQuestCategoriesReponseItem();
+            GetQuestCategoriesResponseItem questCategory = new GetQuestCategoriesResponseItem();
             questCategory.setId(questCategoryEntity.getId());
             questCategory.setGenerationHourOfDay(questCategoryEntity.getGenerationHourOfDay());
             questCategory.setGenerationDayOfWeek(questCategoryEntity.getGenerationDayOfWeek());

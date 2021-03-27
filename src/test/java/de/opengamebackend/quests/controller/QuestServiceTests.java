@@ -1,6 +1,5 @@
 package de.opengamebackend.quests.controller;
 
-import de.opengamebackend.collection.model.requests.PutItemDefinitionsRequest;
 import de.opengamebackend.quests.model.entities.QuestCategory;
 import de.opengamebackend.quests.model.repositories.QuestCategoryRepository;
 import de.opengamebackend.quests.model.requests.PutQuestCategoriesRequest;
