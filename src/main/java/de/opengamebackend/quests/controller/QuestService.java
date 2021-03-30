@@ -1,38 +1,42 @@
 package de.opengamebackend.quests.controller;
 
+import com.google.common.base.Strings;
 import de.opengamebackend.net.ApiErrors;
 import de.opengamebackend.net.ApiException;
+import de.opengamebackend.quests.model.entities.PlayerQuest;
 import de.opengamebackend.quests.model.entities.QuestCategory;
 import de.opengamebackend.quests.model.entities.QuestDefinition;
+import de.opengamebackend.quests.model.repositories.PlayerQuestRepository;
 import de.opengamebackend.quests.model.repositories.QuestCategoryRepository;
 import de.opengamebackend.quests.model.repositories.QuestDefinitionRepository;
 import de.opengamebackend.quests.model.requests.PutQuestCategoriesRequest;
 import de.opengamebackend.quests.model.requests.PutQuestCategoriesRequestItem;
 import de.opengamebackend.quests.model.requests.PutQuestDefinitionsRequest;
 import de.opengamebackend.quests.model.requests.PutQuestDefinitionsRequestItem;
-import de.opengamebackend.quests.model.responses.GetQuestCategoriesResponse;
-import de.opengamebackend.quests.model.responses.GetQuestCategoriesResponseItem;
-import de.opengamebackend.quests.model.responses.GetQuestDefinitionsResponse;
-import de.opengamebackend.quests.model.responses.GetQuestDefinitionsResponseItem;
+import de.opengamebackend.quests.model.responses.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.transaction.Transactional;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
+import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
 public class QuestService {
     private QuestCategoryRepository questCategoryRepository;
     private QuestDefinitionRepository questDefinitionRepository;
+    private PlayerQuestRepository playerQuestRepository;
 
     @Autowired
     public QuestService(QuestCategoryRepository questCategoryRepository,
-                        QuestDefinitionRepository questDefinitionRepository) {
+                        QuestDefinitionRepository questDefinitionRepository,
+                        PlayerQuestRepository playerQuestRepository) {
         this.questCategoryRepository = questCategoryRepository;
         this.questDefinitionRepository = questDefinitionRepository;
+        this.playerQuestRepository = playerQuestRepository;
     }
 
     public GetQuestCategoriesResponse getQuestCategories() {
@@ -161,5 +165,79 @@ public class QuestService {
         // Apply changes.
         questDefinitionRepository.saveAll(definitionsToSave);
         questDefinitionRepository.deleteAll(definitionsToDelete);
+    }
+
+    public CreateQuestsResponse createQuests(String playerId) throws ApiException {
+        if (Strings.isNullOrEmpty(playerId)) {
+            throw new ApiException(ApiErrors.MISSING_PLAYER_ID_CODE, ApiErrors.MISSING_PLAYER_ID_MESSAGE);
+        }
+
+        CreateQuestsResponse response = new CreateQuestsResponse();
+
+        // Get player quests.
+        List<PlayerQuest> playerQuests = playerQuestRepository.findByPlayerId(playerId);
+
+        // Add incomplete quests to response.
+        List<PlayerQuest> incompleteQuests = playerQuests.stream()
+                .filter(q -> q.getCompletedAt() == null)
+                .collect(Collectors.toList());
+
+        for (PlayerQuest incompleteQuest : incompleteQuests) {
+            CreateQuestsResponseItem responseItem = mapToCreateQuestsResponseItem(incompleteQuest, false);
+            response.getQuests().add(responseItem);
+        }
+
+        // For each quest category, check whether we need to generate a new quest.
+        OffsetDateTime now = OffsetDateTime.now();
+
+        for (QuestCategory questCategory : questCategoryRepository.findAll()) {
+            // Find latest generated quest.
+            PlayerQuest latestGeneratedQuest = playerQuests.stream()
+                    .filter(q -> q.getDefinition().getCategory().getId().equals(questCategory.getId()))
+                    .sorted(Comparator.comparing(PlayerQuest::getGeneratedAt))
+                    .reduce((first, second) -> second)
+                    .orElse(null);
+
+            boolean hasNoQuests = latestGeneratedQuest == null;
+            boolean isDailyQuest = questCategory.getGenerationDayOfWeek() == null;
+            boolean isWeeklyQuest = !isDailyQuest;
+
+            if (hasNoQuests
+                    || (isDailyQuest && latestGeneratedQuest.getGeneratedAt().truncatedTo(ChronoUnit.DAYS).isBefore(now.truncatedTo(ChronoUnit.DAYS)))
+                    || (isWeeklyQuest && latestGeneratedQuest.getGeneratedAt().truncatedTo(ChronoUnit.WEEKS).isBefore(now.truncatedTo(ChronoUnit.WEEKS)))) {
+                // Get available quest definitions.
+                List<QuestDefinition> questDefinitions = questDefinitionRepository.findByCategory(questCategory);
+                Random random = new Random();
+                QuestDefinition questDefinition = questDefinitions.get(random.nextInt(questDefinitions.size()));
+
+                // Generate new quest.
+                PlayerQuest newPlayerQuest = new PlayerQuest();
+                newPlayerQuest.setDefinition(questDefinition);
+                newPlayerQuest.setPlayerId(playerId);
+                newPlayerQuest.setGeneratedAt(now);
+
+                playerQuestRepository.save(newPlayerQuest);
+
+                // Add to response.
+                CreateQuestsResponseItem responseItem = mapToCreateQuestsResponseItem(newPlayerQuest, true);
+                response.getQuests().add(responseItem);
+            }
+        }
+
+        return response;
+    }
+
+    private CreateQuestsResponseItem mapToCreateQuestsResponseItem(PlayerQuest quest, boolean isNewQuest) {
+        CreateQuestsResponseItem responseItem = new CreateQuestsResponseItem();
+        responseItem.setId(quest.getId());
+        responseItem.setQuestCategoryId(quest.getDefinition().getCategory().getId());
+        responseItem.setQuestDefinitionId(quest.getDefinition().getId());
+        responseItem.setCurrentProgress(quest.getCurrentProgress());
+        responseItem.setRequiredProgress(quest.getDefinition().getRequiredProgress());
+        responseItem.setRewardItemDefinitionId(quest.getDefinition().getRewardItemDefinitionId());
+        responseItem.setRewardItemCount(quest.getDefinition().getRewardItemCount());
+        responseItem.setGeneratedAt(quest.getGeneratedAt());
+        responseItem.setNewQuest(isNewQuest);
+        return responseItem;
     }
 }

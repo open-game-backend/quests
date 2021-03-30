@@ -3,6 +3,7 @@ package de.opengamebackend.quests.controller;
 import de.opengamebackend.net.ApiException;
 import de.opengamebackend.quests.model.entities.QuestCategory;
 import de.opengamebackend.quests.model.entities.QuestDefinition;
+import de.opengamebackend.quests.model.repositories.PlayerQuestRepository;
 import de.opengamebackend.quests.model.repositories.QuestCategoryRepository;
 import de.opengamebackend.quests.model.repositories.QuestDefinitionRepository;
 import de.opengamebackend.quests.model.requests.PutQuestCategoriesRequest;
@@ -25,6 +26,7 @@ import static org.mockito.Mockito.*;
 public class QuestServiceTests {
     private QuestCategoryRepository questCategoryRepository;
     private QuestDefinitionRepository questDefinitionRepository;
+    private PlayerQuestRepository playerQuestRepository;
 
     private QuestService questService;
 
@@ -32,8 +34,9 @@ public class QuestServiceTests {
     public void beforeEach() {
         questCategoryRepository = mock(QuestCategoryRepository.class);
         questDefinitionRepository = mock(QuestDefinitionRepository.class);
+        playerQuestRepository = mock(PlayerQuestRepository.class);
 
-        questService = new QuestService(questCategoryRepository, questDefinitionRepository);
+        questService = new QuestService(questCategoryRepository, questDefinitionRepository, playerQuestRepository);
     }
 
     @Test

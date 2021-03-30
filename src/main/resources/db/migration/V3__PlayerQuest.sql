@@ -9,3 +9,5 @@ CREATE TABLE quests_playerquest (
     PRIMARY KEY (id),
     FOREIGN KEY (quest_definition_id) REFERENCES quests_questdefinition(id)
 );
+
+CREATE INDEX ix_quests_playerquest_player_id ON quests_playerquest (player_id);
