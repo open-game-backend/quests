@@ -201,10 +201,13 @@ public class QuestService {
             boolean hasNoQuests = latestGeneratedQuest == null;
             boolean isDailyQuest = questCategory.getGenerationDayOfWeek() == null;
             boolean isWeeklyQuest = !isDailyQuest;
+            long daysSinceLastGeneration = hasNoQuests ? 0 : ChronoUnit.DAYS.between(latestGeneratedQuest.getGeneratedAt(), now);
+            long weeksSinceLastGeneration = hasNoQuests ? 0 : ChronoUnit.WEEKS.between(latestGeneratedQuest.getGeneratedAt(), now);
 
             if (hasNoQuests
-                    || (isDailyQuest && latestGeneratedQuest.getGeneratedAt().truncatedTo(ChronoUnit.DAYS).isBefore(now.truncatedTo(ChronoUnit.DAYS)))
-                    || (isWeeklyQuest && latestGeneratedQuest.getGeneratedAt().truncatedTo(ChronoUnit.WEEKS).isBefore(now.truncatedTo(ChronoUnit.WEEKS)))) {
+                    || (isDailyQuest && daysSinceLastGeneration > 0)
+                    || (isWeeklyQuest && weeksSinceLastGeneration > 0)) {
+
                 // Get available quest definitions.
                 List<QuestDefinition> questDefinitions = questDefinitionRepository.findByCategory(questCategory);
                 Random random = new Random();

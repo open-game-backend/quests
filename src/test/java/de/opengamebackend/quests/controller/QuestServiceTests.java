@@ -1,6 +1,8 @@
 package de.opengamebackend.quests.controller;
 
+import de.opengamebackend.net.ApiErrors;
 import de.opengamebackend.net.ApiException;
+import de.opengamebackend.quests.model.entities.PlayerQuest;
 import de.opengamebackend.quests.model.entities.QuestCategory;
 import de.opengamebackend.quests.model.entities.QuestDefinition;
 import de.opengamebackend.quests.model.repositories.PlayerQuestRepository;
@@ -10,6 +12,7 @@ import de.opengamebackend.quests.model.requests.PutQuestCategoriesRequest;
 import de.opengamebackend.quests.model.requests.PutQuestCategoriesRequestItem;
 import de.opengamebackend.quests.model.requests.PutQuestDefinitionsRequest;
 import de.opengamebackend.quests.model.requests.PutQuestDefinitionsRequestItem;
+import de.opengamebackend.quests.model.responses.CreateQuestsResponse;
 import de.opengamebackend.quests.model.responses.GetQuestCategoriesResponse;
 import de.opengamebackend.quests.model.responses.GetQuestDefinitionsResponse;
 import org.assertj.core.util.Lists;
@@ -17,10 +20,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 public class QuestServiceTests {
@@ -350,5 +353,226 @@ public class QuestServiceTests {
 
         assertThat(deletedDefinitions).isNotNull();
         assertThat(deletedDefinitions).doesNotContain(questDefinition1, questDefinition2);
+    }
+
+    @Test
+    public void givenMissingPlayerId_whenCreateQuests_thenThrowException() {
+        // WHEN & THEN
+        assertThatExceptionOfType(ApiException.class)
+                .isThrownBy(() -> questService.createQuests(""))
+                .withMessage(ApiErrors.MISSING_PLAYER_ID_MESSAGE);
+    }
+
+    @Test
+    public void givenIncompleteQuests_whenCreateQuests_thenReturnsIncompleteQuests() throws ApiException {
+        // GIVEN
+        final String playerId = "testPlayer";
+
+        QuestCategory questCategory = mock(QuestCategory.class);
+        when(questCategory.getId()).thenReturn("testQuestCategory");
+
+        QuestDefinition questDefinition = mock(QuestDefinition.class);
+        when(questDefinition.getId()).thenReturn("testQuestDefinition");
+        when(questDefinition.getCategory()).thenReturn(questCategory);
+        when(questDefinition.getRequiredProgress()).thenReturn(2);
+        when(questDefinition.getRewardItemDefinitionId()).thenReturn("testRewardItem");
+        when(questDefinition.getRewardItemCount()).thenReturn(3);
+
+        PlayerQuest incompleteQuest = mock(PlayerQuest.class);
+        when(incompleteQuest.getId()).thenReturn(4L);
+        when(incompleteQuest.getDefinition()).thenReturn(questDefinition);
+        when(incompleteQuest.getCurrentProgress()).thenReturn(1);
+        when(incompleteQuest.getGeneratedAt()).thenReturn(OffsetDateTime.now().minusDays(1));
+
+        when(playerQuestRepository.findByPlayerId(playerId)).thenReturn(Lists.list(incompleteQuest));
+
+        // WHEN
+        CreateQuestsResponse response = questService.createQuests(playerId);
+
+        // THEN
+        assertThat(response).isNotNull();
+        assertThat(response.getQuests()).isNotNull();
+        assertThat(response.getQuests()).hasSize(1);
+        assertThat(response.getQuests().get(0).getId()).isEqualTo(incompleteQuest.getId());
+        assertThat(response.getQuests().get(0).getQuestDefinitionId()).isEqualTo(questDefinition.getId());
+        assertThat(response.getQuests().get(0).getQuestCategoryId()).isEqualTo(questCategory.getId());
+        assertThat(response.getQuests().get(0).getRequiredProgress()).isEqualTo(questDefinition.getRequiredProgress());
+        assertThat(response.getQuests().get(0).getRewardItemDefinitionId()).isEqualTo(questDefinition.getRewardItemDefinitionId());
+        assertThat(response.getQuests().get(0).getRewardItemCount()).isEqualTo(questDefinition.getRewardItemCount());
+        assertThat(response.getQuests().get(0).getCurrentProgress()).isEqualTo(incompleteQuest.getCurrentProgress());
+        assertThat(response.getQuests().get(0).getGeneratedAt()).isEqualTo(incompleteQuest.getGeneratedAt());
+        assertThat(response.getQuests().get(0).isNewQuest()).isFalse();
+    }
+
+    @Test
+    public void givenCompleteQuests_whenCreateQuests_thenDoesNotReturnCompleteQuests() throws ApiException {
+        // GIVEN
+        final String playerId = "testPlayer";
+
+        PlayerQuest completeQuest = mock(PlayerQuest.class);
+        when(completeQuest.getCompletedAt()).thenReturn(OffsetDateTime.now().minusDays(1));
+
+        when(playerQuestRepository.findByPlayerId(playerId)).thenReturn(Lists.list(completeQuest));
+
+        // WHEN
+        CreateQuestsResponse response = questService.createQuests(playerId);
+
+        // THEN
+        assertThat(response).isNotNull();
+        assertThat(response.getQuests()).isNotNull();
+        assertThat(response.getQuests()).isEmpty();
+    }
+
+    @Test
+    public void givenNoQuests_whenCreateQuests_thenCreatesQuest() throws ApiException {
+        // GIVEN
+        final String playerId = "testPlayer";
+
+        QuestCategory questCategory = mock(QuestCategory.class);
+        when(questCategoryRepository.findAll()).thenReturn(Lists.list(questCategory));
+
+        QuestDefinition questDefinition = mock(QuestDefinition.class);
+        when(questDefinition.getCategory()).thenReturn(questCategory);
+        when(questDefinitionRepository.findByCategory(questCategory)).thenReturn(Lists.list(questDefinition));
+
+        // WHEN
+        CreateQuestsResponse response = questService.createQuests(playerId);
+
+        // THEN
+        ArgumentCaptor<PlayerQuest> argumentCaptor = ArgumentCaptor.forClass(PlayerQuest.class);
+        verify(playerQuestRepository).save(argumentCaptor.capture());
+        PlayerQuest newPlayerQuest = argumentCaptor.getValue();
+
+        assertThat(newPlayerQuest).isNotNull();
+        assertThat(newPlayerQuest.getPlayerId()).isEqualTo(playerId);
+        assertThat(newPlayerQuest.getDefinition()).isEqualTo(questDefinition);
+        assertThat(newPlayerQuest.getCurrentProgress()).isEqualTo(0);
+        assertThat(newPlayerQuest.getGeneratedAt()).isNotNull();
+        assertThat(newPlayerQuest.getCompletedAt()).isNull();
+
+        assertThat(response).isNotNull();
+        assertThat(response.getQuests()).isNotNull();
+        assertThat(response.getQuests()).hasSize(1);
+        assertThat(response.getQuests().get(0).getId()).isEqualTo(newPlayerQuest.getId());
+    }
+
+    @Test
+    public void givenOldDailyQuest_whenCreateQuests_thenCreatesQuest() throws ApiException {
+        // GIVEN
+        final String playerId = "testPlayer";
+
+        QuestCategory dailyQuestCategory = mock(QuestCategory.class);
+        when(dailyQuestCategory.getId()).thenReturn("testQuestCategory");
+        when(dailyQuestCategory.getGenerationDayOfWeek()).thenReturn(null);
+        when(questCategoryRepository.findAll()).thenReturn(Lists.list(dailyQuestCategory));
+
+        QuestDefinition questDefinition = mock(QuestDefinition.class);
+        when(questDefinition.getCategory()).thenReturn(dailyQuestCategory);
+        when(questDefinitionRepository.findByCategory(dailyQuestCategory)).thenReturn(Lists.list(questDefinition));
+
+        PlayerQuest oldPlayerQuest = mock(PlayerQuest.class);
+        when(oldPlayerQuest.getDefinition()).thenReturn(questDefinition);
+        when(oldPlayerQuest.getGeneratedAt()).thenReturn(OffsetDateTime.now().minusDays(2));
+        when(oldPlayerQuest.getCompletedAt()).thenReturn(OffsetDateTime.now().minusDays(1));
+        when(playerQuestRepository.findByPlayerId(playerId)).thenReturn(Lists.list(oldPlayerQuest));
+
+        // WHEN
+        CreateQuestsResponse response = questService.createQuests(playerId);
+
+        // THEN
+        ArgumentCaptor<PlayerQuest> argumentCaptor = ArgumentCaptor.forClass(PlayerQuest.class);
+        verify(playerQuestRepository).save(argumentCaptor.capture());
+        PlayerQuest newPlayerQuest = argumentCaptor.getValue();
+
+        assertThat(newPlayerQuest).isNotNull();
+        assertThat(response).isNotNull();
+        assertThat(response.getQuests()).isNotNull();
+        assertThat(response.getQuests()).hasSize(1);
+    }
+
+    @Test
+    public void givenCurrentDailyQuest_whenCreateQuests_thenDoesNotCreateQuest() throws ApiException {
+        // GIVEN
+        final String playerId = "testPlayer";
+
+        QuestCategory dailyQuestCategory = mock(QuestCategory.class);
+        when(dailyQuestCategory.getId()).thenReturn("testQuestCategory");
+        when(dailyQuestCategory.getGenerationDayOfWeek()).thenReturn(null);
+        when(questCategoryRepository.findAll()).thenReturn(Lists.list(dailyQuestCategory));
+
+        QuestDefinition questDefinition = mock(QuestDefinition.class);
+        when(questDefinition.getCategory()).thenReturn(dailyQuestCategory);
+        when(questDefinitionRepository.findByCategory(dailyQuestCategory)).thenReturn(Lists.list(questDefinition));
+
+        PlayerQuest currentPlayerQuest = mock(PlayerQuest.class);
+        when(currentPlayerQuest.getDefinition()).thenReturn(questDefinition);
+        when(currentPlayerQuest.getGeneratedAt()).thenReturn(OffsetDateTime.now());
+        when(playerQuestRepository.findByPlayerId(playerId)).thenReturn(Lists.list(currentPlayerQuest));
+
+        // WHEN
+        questService.createQuests(playerId);
+
+        // THEN
+        verify(playerQuestRepository, never()).save(any());
+    }
+
+    @Test
+    public void givenOldWeeklyQuest_whenCreateQuests_thenCreatesQuest() throws ApiException {
+        // GIVEN
+        final String playerId = "testPlayer";
+
+        QuestCategory weeklyQuestCategory = mock(QuestCategory.class);
+        when(weeklyQuestCategory.getId()).thenReturn("testQuestCategory");
+        when(weeklyQuestCategory.getGenerationDayOfWeek()).thenReturn(1);
+        when(questCategoryRepository.findAll()).thenReturn(Lists.list(weeklyQuestCategory));
+
+        QuestDefinition questDefinition = mock(QuestDefinition.class);
+        when(questDefinition.getCategory()).thenReturn(weeklyQuestCategory);
+        when(questDefinitionRepository.findByCategory(weeklyQuestCategory)).thenReturn(Lists.list(questDefinition));
+
+        PlayerQuest oldPlayerQuest = mock(PlayerQuest.class);
+        when(oldPlayerQuest.getDefinition()).thenReturn(questDefinition);
+        when(oldPlayerQuest.getGeneratedAt()).thenReturn(OffsetDateTime.now().minusWeeks(2));
+        when(oldPlayerQuest.getCompletedAt()).thenReturn(OffsetDateTime.now().minusDays(1));
+        when(playerQuestRepository.findByPlayerId(playerId)).thenReturn(Lists.list(oldPlayerQuest));
+
+        // WHEN
+        CreateQuestsResponse response = questService.createQuests(playerId);
+
+        // THEN
+        ArgumentCaptor<PlayerQuest> argumentCaptor = ArgumentCaptor.forClass(PlayerQuest.class);
+        verify(playerQuestRepository).save(argumentCaptor.capture());
+        PlayerQuest newPlayerQuest = argumentCaptor.getValue();
+
+        assertThat(newPlayerQuest).isNotNull();
+        assertThat(response).isNotNull();
+        assertThat(response.getQuests()).isNotNull();
+        assertThat(response.getQuests()).hasSize(1);
+    }
+
+    @Test
+    public void givenCurrentWeeklyQuest_whenCreateQuests_thenDoesNotCreateQuest() throws ApiException {
+        // GIVEN
+        final String playerId = "testPlayer";
+
+        QuestCategory weeklyQuestCategory = mock(QuestCategory.class);
+        when(weeklyQuestCategory.getId()).thenReturn("testQuestCategory");
+        when(weeklyQuestCategory.getGenerationDayOfWeek()).thenReturn(1);
+        when(questCategoryRepository.findAll()).thenReturn(Lists.list(weeklyQuestCategory));
+
+        QuestDefinition questDefinition = mock(QuestDefinition.class);
+        when(questDefinition.getCategory()).thenReturn(weeklyQuestCategory);
+        when(questDefinitionRepository.findByCategory(weeklyQuestCategory)).thenReturn(Lists.list(questDefinition));
+
+        PlayerQuest currentPlayerQuest = mock(PlayerQuest.class);
+        when(currentPlayerQuest.getDefinition()).thenReturn(questDefinition);
+        when(currentPlayerQuest.getGeneratedAt()).thenReturn(OffsetDateTime.now());
+        when(playerQuestRepository.findByPlayerId(playerId)).thenReturn(Lists.list(currentPlayerQuest));
+
+        // WHEN
+        questService.createQuests(playerId);
+
+        // THEN
+        verify(playerQuestRepository, never()).save(any());
     }
 }
