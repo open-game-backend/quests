@@ -8,11 +8,9 @@ import de.opengamebackend.quests.model.entities.QuestDefinition;
 import de.opengamebackend.quests.model.repositories.PlayerQuestRepository;
 import de.opengamebackend.quests.model.repositories.QuestCategoryRepository;
 import de.opengamebackend.quests.model.repositories.QuestDefinitionRepository;
-import de.opengamebackend.quests.model.requests.PutQuestCategoriesRequest;
-import de.opengamebackend.quests.model.requests.PutQuestCategoriesRequestItem;
-import de.opengamebackend.quests.model.requests.PutQuestDefinitionsRequest;
-import de.opengamebackend.quests.model.requests.PutQuestDefinitionsRequestItem;
+import de.opengamebackend.quests.model.requests.*;
 import de.opengamebackend.quests.model.responses.CreateQuestsResponse;
+import de.opengamebackend.quests.model.responses.GetPlayerQuestsResponse;
 import de.opengamebackend.quests.model.responses.GetQuestCategoriesResponse;
 import de.opengamebackend.quests.model.responses.GetQuestDefinitionsResponse;
 import org.assertj.core.util.Lists;
@@ -20,8 +18,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import javax.persistence.criteria.CriteriaBuilder;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -574,5 +574,122 @@ public class QuestServiceTests {
 
         // THEN
         verify(playerQuestRepository, never()).save(any());
+    }
+
+    @Test
+    public void givenPlayerQuests_whenGetPlayerQuests_thenReturnQuests() {
+        // GIVEN
+        final String playerId = "testPlayer";
+
+        QuestCategory testQuestCategory = mock(QuestCategory.class);
+        when(testQuestCategory.getId()).thenReturn("testQuestCategory");
+
+        QuestDefinition questDefinition = mock(QuestDefinition.class);
+        when(questDefinition.getId()).thenReturn("testQuestDefinition");
+        when(questDefinition.getCategory()).thenReturn(testQuestCategory);
+        when(questDefinition.getRequiredProgress()).thenReturn(8);
+        when(questDefinition.getRewardItemDefinitionId()).thenReturn("testRewardItemDefinition");
+        when(questDefinition.getRewardItemCount()).thenReturn(3);
+
+        PlayerQuest playerQuest1 = mock(PlayerQuest.class);
+        when(playerQuest1.getId()).thenReturn(4L);
+        when(playerQuest1.getDefinition()).thenReturn(questDefinition);
+        when(playerQuest1.getCurrentProgress()).thenReturn(5);
+        when(playerQuest1.getGeneratedAt()).thenReturn(OffsetDateTime.now().minusDays(2));
+        when(playerQuest1.getCompletedAt()).thenReturn(OffsetDateTime.now().minusDays(1));
+
+        PlayerQuest playerQuest2 = mock(PlayerQuest.class);
+        when(playerQuest2.getId()).thenReturn(6L);
+        when(playerQuest2.getDefinition()).thenReturn(questDefinition);
+        when(playerQuest2.getCurrentProgress()).thenReturn(7);
+        when(playerQuest2.getGeneratedAt()).thenReturn(OffsetDateTime.now().minusDays(4));
+        when(playerQuest2.getCompletedAt()).thenReturn(OffsetDateTime.now().minusDays(3));
+
+        when(playerQuestRepository.findByPlayerId(playerId)).thenReturn(Lists.list(playerQuest1, playerQuest2));
+
+        // WHEN
+        GetPlayerQuestsResponse response = questService.getPlayerQuests(playerId);
+
+        // THEN
+        assertThat(response).isNotNull();
+        assertThat(response.getQuests()).isNotNull();
+        assertThat(response.getQuests()).hasSize(2);
+        assertThat(response.getQuests().get(0).getId()).isEqualTo(playerQuest1.getId());
+        assertThat(response.getQuests().get(0).getQuestCategoryId()).isEqualTo(playerQuest1.getDefinition().getCategory().getId());
+        assertThat(response.getQuests().get(0).getQuestDefinitionId()).isEqualTo(playerQuest1.getDefinition().getId());
+        assertThat(response.getQuests().get(0).getRequiredProgress()).isEqualTo(playerQuest1.getDefinition().getRequiredProgress());
+        assertThat(response.getQuests().get(0).getCurrentProgress()).isEqualTo(playerQuest1.getCurrentProgress());
+        assertThat(response.getQuests().get(0).getRewardItemDefinitionId()).isEqualTo(playerQuest1.getDefinition().getRewardItemDefinitionId());
+        assertThat(response.getQuests().get(0).getRewardItemCount()).isEqualTo(playerQuest1.getDefinition().getRewardItemCount());
+        assertThat(response.getQuests().get(0).getGeneratedAt()).isEqualTo(playerQuest1.getGeneratedAt());
+        assertThat(response.getQuests().get(0).getCompletedAt()).isEqualTo(playerQuest1.getCompletedAt());
+        assertThat(response.getQuests().get(1).getId()).isEqualTo(playerQuest2.getId());
+        assertThat(response.getQuests().get(1).getQuestCategoryId()).isEqualTo(playerQuest2.getDefinition().getCategory().getId());
+        assertThat(response.getQuests().get(1).getQuestDefinitionId()).isEqualTo(playerQuest2.getDefinition().getId());
+        assertThat(response.getQuests().get(1).getRequiredProgress()).isEqualTo(playerQuest2.getDefinition().getRequiredProgress());
+        assertThat(response.getQuests().get(1).getCurrentProgress()).isEqualTo(playerQuest2.getCurrentProgress());
+        assertThat(response.getQuests().get(1).getRewardItemDefinitionId()).isEqualTo(playerQuest2.getDefinition().getRewardItemDefinitionId());
+        assertThat(response.getQuests().get(1).getRewardItemCount()).isEqualTo(playerQuest2.getDefinition().getRewardItemCount());
+        assertThat(response.getQuests().get(1).getGeneratedAt()).isEqualTo(playerQuest2.getGeneratedAt());
+        assertThat(response.getQuests().get(1).getCompletedAt()).isEqualTo(playerQuest2.getCompletedAt());
+    }
+
+    @Test
+    public void givenMissingPlayerId_whenIncreaseQuestProgress_thenThrowException() {
+        // WHEN & THEN
+        assertThatExceptionOfType(ApiException.class)
+                .isThrownBy(() -> questService.increaseQuestProgress("", null, null))
+                .withMessage(ApiErrors.MISSING_PLAYER_ID_MESSAGE);
+    }
+
+    @Test
+    public void givenUnknownQuestDefinition_whenIncreaseQuestProgress_thenThrowException() {
+        // GIVEN
+        final String questDefinitionId = "testQuestDefinition";
+
+        // WHEN & THEN
+        assertThatExceptionOfType(ApiException.class)
+                .isThrownBy(() -> questService.increaseQuestProgress("testPlayer", questDefinitionId, null))
+                .withMessage(ApiErrors.UNKNOWN_QUEST_DEFINITION_MESSAGE + questDefinitionId);
+    }
+
+    @Test
+    public void givenAbsentQuest_whenIncreaseQuestProgress_thenDoNothing() throws ApiException {
+        // GIVEN
+        final String questDefinitionId = "testQuestDefinition";
+
+        QuestDefinition questDefinition = mock(QuestDefinition.class);
+        when(questDefinitionRepository.findById(questDefinitionId)).thenReturn(Optional.of(questDefinition));
+
+        // WHEN
+        questService.increaseQuestProgress("testPlayer", questDefinitionId, null);
+
+        // THEN
+        verify(playerQuestRepository, never()).save(any());
+    }
+
+    @Test
+    public void givenActiveQuest_whenIncreaseQuestProgress_thenUpdateProgress() throws ApiException {
+        // GIVEN
+        final String playerId = "testPlayer";
+        final String questDefinitionId = "testQuestDefinition";
+
+        QuestDefinition questDefinition = mock(QuestDefinition.class);
+        when(questDefinition.getRequiredProgress()).thenReturn(6);
+        when(questDefinitionRepository.findById(questDefinitionId)).thenReturn(Optional.of(questDefinition));
+
+        PlayerQuest playerQuest = mock(PlayerQuest.class);
+        when(playerQuest.getCurrentProgress()).thenReturn(2);
+        when(playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition)).thenReturn(playerQuest);
+
+        IncreaseQuestProgressRequest request = mock(IncreaseQuestProgressRequest.class);
+        when(request.getProgressMade()).thenReturn(3);
+
+        // WHEN
+        questService.increaseQuestProgress(playerId, questDefinitionId, request);
+
+        // THEN
+        verify(playerQuest).setCurrentProgress(playerQuest.getCurrentProgress() + request.getProgressMade());
+        verify(playerQuestRepository).save(playerQuest);
     }
 }

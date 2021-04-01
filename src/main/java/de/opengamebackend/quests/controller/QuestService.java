@@ -9,10 +9,7 @@ import de.opengamebackend.quests.model.entities.QuestDefinition;
 import de.opengamebackend.quests.model.repositories.PlayerQuestRepository;
 import de.opengamebackend.quests.model.repositories.QuestCategoryRepository;
 import de.opengamebackend.quests.model.repositories.QuestDefinitionRepository;
-import de.opengamebackend.quests.model.requests.PutQuestCategoriesRequest;
-import de.opengamebackend.quests.model.requests.PutQuestCategoriesRequestItem;
-import de.opengamebackend.quests.model.requests.PutQuestDefinitionsRequest;
-import de.opengamebackend.quests.model.requests.PutQuestDefinitionsRequestItem;
+import de.opengamebackend.quests.model.requests.*;
 import de.opengamebackend.quests.model.responses.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -228,6 +225,58 @@ public class QuestService {
         }
 
         return response;
+    }
+
+    public GetPlayerQuestsResponse getPlayerQuests(String playerId) {
+        ArrayList<GetPlayerQuestsResponseItem> playerQuests = new ArrayList<>();
+
+        for (PlayerQuest playerQuestEntity : playerQuestRepository.findByPlayerId(playerId)) {
+            GetPlayerQuestsResponseItem playerQuest = new GetPlayerQuestsResponseItem();
+
+            playerQuest.setId(playerQuestEntity.getId());
+            playerQuest.setQuestCategoryId(playerQuestEntity.getDefinition().getCategory().getId());
+            playerQuest.setQuestDefinitionId(playerQuestEntity.getDefinition().getId());
+            playerQuest.setRequiredProgress(playerQuestEntity.getDefinition().getRequiredProgress());
+            playerQuest.setCurrentProgress(playerQuestEntity.getCurrentProgress());
+            playerQuest.setRewardItemDefinitionId(playerQuestEntity.getDefinition().getRewardItemDefinitionId());
+            playerQuest.setRewardItemCount(playerQuestEntity.getDefinition().getRewardItemCount());
+            playerQuest.setGeneratedAt(playerQuestEntity.getGeneratedAt());
+            playerQuest.setCompletedAt(playerQuestEntity.getCompletedAt());
+
+            playerQuests.add(playerQuest);
+        }
+
+        GetPlayerQuestsResponse response = new GetPlayerQuestsResponse();
+        response.setQuests(playerQuests);
+        return response;
+    }
+
+    public void increaseQuestProgress(String playerId, String questDefinitionId, IncreaseQuestProgressRequest request)
+            throws ApiException {
+        // Find quest.
+        if (Strings.isNullOrEmpty(playerId)) {
+            throw new ApiException(ApiErrors.MISSING_PLAYER_ID_CODE, ApiErrors.MISSING_PLAYER_ID_MESSAGE);
+        }
+
+        QuestDefinition questDefinition = questDefinitionRepository.findById(questDefinitionId).orElse(null);
+
+        if (questDefinition == null) {
+            throw new ApiException(ApiErrors.UNKNOWN_QUEST_DEFINITION_CODE,
+                    ApiErrors.UNKNOWN_QUEST_DEFINITION_MESSAGE + questDefinitionId);
+        }
+
+        PlayerQuest playerQuest = playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition);
+
+        if (playerQuest == null) {
+            return;
+        }
+
+        // Update progress.
+        int oldProgress = playerQuest.getCurrentProgress();
+        int newProgress = Math.min(oldProgress + request.getProgressMade(), questDefinition.getRequiredProgress());
+
+        playerQuest.setCurrentProgress(newProgress);
+        playerQuestRepository.save(playerQuest);
     }
 
     private CreateQuestsResponseItem mapToCreateQuestsResponseItem(PlayerQuest quest, boolean isNewQuest) {
