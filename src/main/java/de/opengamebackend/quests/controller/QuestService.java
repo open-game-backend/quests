@@ -1,6 +1,7 @@
 package de.opengamebackend.quests.controller;
 
 import com.google.common.base.Strings;
+import de.opengamebackend.collection.model.requests.AddCollectionItemsRequest;
 import de.opengamebackend.net.ApiErrors;
 import de.opengamebackend.net.ApiException;
 import de.opengamebackend.quests.model.entities.PlayerQuest;
@@ -27,13 +28,18 @@ public class QuestService {
     private QuestDefinitionRepository questDefinitionRepository;
     private PlayerQuestRepository playerQuestRepository;
 
+    private CollectionService collectionService;
+
     @Autowired
     public QuestService(QuestCategoryRepository questCategoryRepository,
                         QuestDefinitionRepository questDefinitionRepository,
-                        PlayerQuestRepository playerQuestRepository) {
+                        PlayerQuestRepository playerQuestRepository,
+                        CollectionService collectionService) {
         this.questCategoryRepository = questCategoryRepository;
         this.questDefinitionRepository = questDefinitionRepository;
         this.playerQuestRepository = playerQuestRepository;
+
+        this.collectionService = collectionService;
     }
 
     public GetQuestCategoriesResponse getQuestCategories() {
@@ -265,7 +271,11 @@ public class QuestService {
                     ApiErrors.UNKNOWN_QUEST_DEFINITION_MESSAGE + questDefinitionId);
         }
 
-        PlayerQuest playerQuest = playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition);
+        List<PlayerQuest> playerQuests = playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition);
+        PlayerQuest playerQuest = playerQuests.stream()
+                .filter(q -> q.getCompletedAt() == null)
+                .findFirst()
+                .orElse(null);
 
         if (playerQuest == null) {
             return;
@@ -277,6 +287,53 @@ public class QuestService {
 
         playerQuest.setCurrentProgress(newProgress);
         playerQuestRepository.save(playerQuest);
+    }
+
+    public FinishQuestResponse finishQuest(String playerId, String questDefinitionId) throws ApiException {
+        // Find quest.
+        if (Strings.isNullOrEmpty(playerId)) {
+            throw new ApiException(ApiErrors.MISSING_PLAYER_ID_CODE, ApiErrors.MISSING_PLAYER_ID_MESSAGE);
+        }
+
+        QuestDefinition questDefinition = questDefinitionRepository.findById(questDefinitionId).orElse(null);
+
+        if (questDefinition == null) {
+            throw new ApiException(ApiErrors.UNKNOWN_QUEST_DEFINITION_CODE,
+                    ApiErrors.UNKNOWN_QUEST_DEFINITION_MESSAGE + questDefinitionId);
+        }
+
+        List<PlayerQuest> playerQuests = playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition);
+        PlayerQuest playerQuest = playerQuests.stream()
+                .filter(q -> q.getCompletedAt() == null)
+                .findFirst()
+                .orElse(null);
+
+        if (playerQuest == null) {
+            throw new ApiException(ApiErrors.QUEST_NOT_FOUND_CODE, ApiErrors.QUEST_NOT_FOUND_MESSAGE);
+        }
+
+        // Check progress.
+        if (playerQuest.getCurrentProgress() < questDefinition.getRequiredProgress()) {
+            throw new ApiException(ApiErrors.INSUFFICIENT_QUEST_PROGRESS_CODE,
+                    ApiErrors.INSUFFICIENT_QUEST_PROGRESS_MESSAGE);
+        }
+
+        // Grant rewards.
+        AddCollectionItemsRequest request = new AddCollectionItemsRequest();
+        request.setItemDefinitionId(questDefinition.getRewardItemDefinitionId());
+        request.setItemCount(questDefinition.getRewardItemCount());
+
+        collectionService.addCollectionItems(playerId, request);
+
+        // Mark completed.
+        playerQuest.setCompletedAt(OffsetDateTime.now());
+        playerQuestRepository.save(playerQuest);
+
+        // Return response.
+        FinishQuestResponse response = new FinishQuestResponse();
+        response.setRewardItemDefinitionId(questDefinition.getRewardItemDefinitionId());
+        response.setRewardItemCount(questDefinition.getRewardItemCount());
+        return response;
     }
 
     private CreateQuestsResponseItem mapToCreateQuestsResponseItem(PlayerQuest quest, boolean isNewQuest) {

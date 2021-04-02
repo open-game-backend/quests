@@ -1,5 +1,6 @@
 package de.opengamebackend.quests.controller;
 
+import de.opengamebackend.collection.model.requests.AddCollectionItemsRequest;
 import de.opengamebackend.net.ApiErrors;
 import de.opengamebackend.net.ApiException;
 import de.opengamebackend.quests.model.entities.PlayerQuest;
@@ -9,27 +10,26 @@ import de.opengamebackend.quests.model.repositories.PlayerQuestRepository;
 import de.opengamebackend.quests.model.repositories.QuestCategoryRepository;
 import de.opengamebackend.quests.model.repositories.QuestDefinitionRepository;
 import de.opengamebackend.quests.model.requests.*;
-import de.opengamebackend.quests.model.responses.CreateQuestsResponse;
-import de.opengamebackend.quests.model.responses.GetPlayerQuestsResponse;
-import de.opengamebackend.quests.model.responses.GetQuestCategoriesResponse;
-import de.opengamebackend.quests.model.responses.GetQuestDefinitionsResponse;
+import de.opengamebackend.quests.model.responses.*;
 import org.assertj.core.util.Lists;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import javax.persistence.criteria.CriteriaBuilder;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.Mockito.*;
 
 public class QuestServiceTests {
     private QuestCategoryRepository questCategoryRepository;
     private QuestDefinitionRepository questDefinitionRepository;
     private PlayerQuestRepository playerQuestRepository;
+
+    private CollectionService collectionService;
 
     private QuestService questService;
 
@@ -39,7 +39,10 @@ public class QuestServiceTests {
         questDefinitionRepository = mock(QuestDefinitionRepository.class);
         playerQuestRepository = mock(PlayerQuestRepository.class);
 
-        questService = new QuestService(questCategoryRepository, questDefinitionRepository, playerQuestRepository);
+        collectionService = mock(CollectionService.class);
+
+        questService = new QuestService(questCategoryRepository, questDefinitionRepository, playerQuestRepository,
+                collectionService);
     }
 
     @Test
@@ -680,7 +683,7 @@ public class QuestServiceTests {
 
         PlayerQuest playerQuest = mock(PlayerQuest.class);
         when(playerQuest.getCurrentProgress()).thenReturn(2);
-        when(playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition)).thenReturn(playerQuest);
+        when(playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition)).thenReturn(Lists.list(playerQuest));
 
         IncreaseQuestProgressRequest request = mock(IncreaseQuestProgressRequest.class);
         when(request.getProgressMade()).thenReturn(3);
@@ -691,5 +694,136 @@ public class QuestServiceTests {
         // THEN
         verify(playerQuest).setCurrentProgress(playerQuest.getCurrentProgress() + request.getProgressMade());
         verify(playerQuestRepository).save(playerQuest);
+    }
+
+    @Test
+    public void givenMissingPlayerId_whenFinishQuest_thenThrowException() {
+        // WHEN & THEN
+        assertThatExceptionOfType(ApiException.class)
+                .isThrownBy(() -> questService.finishQuest("", null))
+                .withMessage(ApiErrors.MISSING_PLAYER_ID_MESSAGE);
+    }
+
+    @Test
+    public void givenUnknownQuestDefinition_whenFinishQuest_thenThrowException() {
+        // GIVEN
+        final String questDefinitionId = "testQuestDefinition";
+
+        // WHEN & THEN
+        assertThatExceptionOfType(ApiException.class)
+                .isThrownBy(() -> questService.finishQuest("testPlayer", questDefinitionId))
+                .withMessage(ApiErrors.UNKNOWN_QUEST_DEFINITION_MESSAGE + questDefinitionId);
+    }
+
+    @Test
+    public void givenMissingIncompleteQuest_whenFinishQuest_thenThrowException() {
+        // GIVEN
+        final String questDefinitionId = "testQuestDefinition";
+
+        QuestDefinition questDefinition = mock(QuestDefinition.class);
+        when(questDefinitionRepository.findById(questDefinitionId)).thenReturn(Optional.of(questDefinition));
+
+        // WHEN & THEN
+        assertThatExceptionOfType(ApiException.class)
+                .isThrownBy(() -> questService.finishQuest("testPlayer", questDefinitionId))
+                .withMessage(ApiErrors.QUEST_NOT_FOUND_MESSAGE);
+    }
+
+    @Test
+    public void givenInsufficientQuestProgress_whenFinishQuest_thenThrowException() {
+        // GIVEN
+        final String playerId = "testPlayer";
+        final String questDefinitionId = "testQuestDefinition";
+
+        QuestDefinition questDefinition = mock(QuestDefinition.class);
+        when(questDefinition.getRequiredProgress()).thenReturn(1);
+        when(questDefinitionRepository.findById(questDefinitionId)).thenReturn(Optional.of(questDefinition));
+
+        PlayerQuest playerQuest = mock(PlayerQuest.class);
+        when(playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition)).thenReturn(Lists.list(playerQuest));
+
+        // WHEN & THEN
+        assertThatExceptionOfType(ApiException.class)
+                .isThrownBy(() -> questService.finishQuest(playerId, questDefinitionId))
+                .withMessage(ApiErrors.INSUFFICIENT_QUEST_PROGRESS_MESSAGE);
+    }
+
+    @Test
+    public void givenSufficientQuestProgress_whenFinishQuest_thenGrantRewards() throws ApiException {
+        // GIVEN
+        final String playerId = "testPlayer";
+        final String questDefinitionId = "testQuestDefinition";
+        final int requiredProgress = 1;
+
+        QuestDefinition questDefinition = mock(QuestDefinition.class);
+        when(questDefinition.getRequiredProgress()).thenReturn(requiredProgress);
+        when(questDefinition.getRewardItemDefinitionId()).thenReturn("testReward");
+        when(questDefinition.getRewardItemCount()).thenReturn(2);
+        when(questDefinitionRepository.findById(questDefinitionId)).thenReturn(Optional.of(questDefinition));
+
+        PlayerQuest playerQuest = mock(PlayerQuest.class);
+        when(playerQuest.getCurrentProgress()).thenReturn(requiredProgress);
+        when(playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition)).thenReturn(Lists.list(playerQuest));
+
+        // WHEN
+        questService.finishQuest(playerId, questDefinitionId);
+
+        // THEN
+        ArgumentCaptor<AddCollectionItemsRequest> argumentCaptor = ArgumentCaptor.forClass(AddCollectionItemsRequest.class);
+        verify(collectionService).addCollectionItems(eq(playerId), argumentCaptor.capture());
+        AddCollectionItemsRequest request = argumentCaptor.getValue();
+
+        assertThat(request).isNotNull();
+        assertThat(request.getItemDefinitionId()).isEqualTo(questDefinition.getRewardItemDefinitionId());
+        assertThat(request.getItemCount()).isEqualTo(questDefinition.getRewardItemCount());
+    }
+
+    @Test
+    public void givenSufficientQuestProgress_whenFinishQuest_thenMarkCompleted() throws ApiException {
+        // GIVEN
+        final String playerId = "testPlayer";
+        final String questDefinitionId = "testQuestDefinition";
+        final int requiredProgress = 1;
+
+        QuestDefinition questDefinition = mock(QuestDefinition.class);
+        when(questDefinition.getRequiredProgress()).thenReturn(requiredProgress);
+        when(questDefinitionRepository.findById(questDefinitionId)).thenReturn(Optional.of(questDefinition));
+
+        PlayerQuest playerQuest = mock(PlayerQuest.class);
+        when(playerQuest.getCurrentProgress()).thenReturn(requiredProgress);
+        when(playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition)).thenReturn(Lists.list(playerQuest));
+
+        // WHEN
+        questService.finishQuest(playerId, questDefinitionId);
+
+        // THEN
+        verify(playerQuest).setCompletedAt(any());
+        verify(playerQuestRepository).save(playerQuest);
+    }
+
+    @Test
+    public void givenSufficientQuestProgress_whenFinishQuest_thenReturnGrantedRewards() throws ApiException {
+        // GIVEN
+        final String playerId = "testPlayer";
+        final String questDefinitionId = "testQuestDefinition";
+        final int requiredProgress = 1;
+
+        QuestDefinition questDefinition = mock(QuestDefinition.class);
+        when(questDefinition.getRequiredProgress()).thenReturn(requiredProgress);
+        when(questDefinition.getRewardItemDefinitionId()).thenReturn("testReward");
+        when(questDefinition.getRewardItemCount()).thenReturn(2);
+        when(questDefinitionRepository.findById(questDefinitionId)).thenReturn(Optional.of(questDefinition));
+
+        PlayerQuest playerQuest = mock(PlayerQuest.class);
+        when(playerQuest.getCurrentProgress()).thenReturn(requiredProgress);
+        when(playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition)).thenReturn(Lists.list(playerQuest));
+
+        // WHEN
+        FinishQuestResponse response = questService.finishQuest(playerId, questDefinitionId);
+
+        // THEN
+        assertThat(response).isNotNull();
+        assertThat(response.getRewardItemDefinitionId()).isEqualTo(questDefinition.getRewardItemDefinitionId());
+        assertThat(response.getRewardItemCount()).isEqualTo(questDefinition.getRewardItemCount());
     }
 }

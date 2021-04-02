@@ -10,5 +10,5 @@ import java.util.List;
 @Repository
 public interface PlayerQuestRepository extends CrudRepository<PlayerQuest, Long> {
     List<PlayerQuest> findByPlayerId(String playerId);
-    PlayerQuest findByPlayerIdAndQuestDefinition(String playerId, QuestDefinition questDefinition);
+    List<PlayerQuest> findByPlayerIdAndQuestDefinition(String playerId, QuestDefinition questDefinition);
 }
