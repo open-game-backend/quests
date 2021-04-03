@@ -683,7 +683,7 @@ public class QuestServiceTests {
 
         PlayerQuest playerQuest = mock(PlayerQuest.class);
         when(playerQuest.getCurrentProgress()).thenReturn(2);
-        when(playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition)).thenReturn(Lists.list(playerQuest));
+        when(playerQuestRepository.findByPlayerIdAndDefinition(playerId, questDefinition)).thenReturn(Lists.list(playerQuest));
 
         IncreaseQuestProgressRequest request = mock(IncreaseQuestProgressRequest.class);
         when(request.getProgressMade()).thenReturn(3);
@@ -740,7 +740,7 @@ public class QuestServiceTests {
         when(questDefinitionRepository.findById(questDefinitionId)).thenReturn(Optional.of(questDefinition));
 
         PlayerQuest playerQuest = mock(PlayerQuest.class);
-        when(playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition)).thenReturn(Lists.list(playerQuest));
+        when(playerQuestRepository.findByPlayerIdAndDefinition(playerId, questDefinition)).thenReturn(Lists.list(playerQuest));
 
         // WHEN & THEN
         assertThatExceptionOfType(ApiException.class)
@@ -763,7 +763,7 @@ public class QuestServiceTests {
 
         PlayerQuest playerQuest = mock(PlayerQuest.class);
         when(playerQuest.getCurrentProgress()).thenReturn(requiredProgress);
-        when(playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition)).thenReturn(Lists.list(playerQuest));
+        when(playerQuestRepository.findByPlayerIdAndDefinition(playerId, questDefinition)).thenReturn(Lists.list(playerQuest));
 
         // WHEN
         questService.finishQuest(playerId, questDefinitionId);
@@ -791,7 +791,7 @@ public class QuestServiceTests {
 
         PlayerQuest playerQuest = mock(PlayerQuest.class);
         when(playerQuest.getCurrentProgress()).thenReturn(requiredProgress);
-        when(playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition)).thenReturn(Lists.list(playerQuest));
+        when(playerQuestRepository.findByPlayerIdAndDefinition(playerId, questDefinition)).thenReturn(Lists.list(playerQuest));
 
         // WHEN
         questService.finishQuest(playerId, questDefinitionId);
@@ -816,7 +816,7 @@ public class QuestServiceTests {
 
         PlayerQuest playerQuest = mock(PlayerQuest.class);
         when(playerQuest.getCurrentProgress()).thenReturn(requiredProgress);
-        when(playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition)).thenReturn(Lists.list(playerQuest));
+        when(playerQuestRepository.findByPlayerIdAndDefinition(playerId, questDefinition)).thenReturn(Lists.list(playerQuest));
 
         // WHEN
         FinishQuestResponse response = questService.finishQuest(playerId, questDefinitionId);

@@ -271,7 +271,7 @@ public class QuestService {
                     ApiErrors.UNKNOWN_QUEST_DEFINITION_MESSAGE + questDefinitionId);
         }
 
-        List<PlayerQuest> playerQuests = playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition);
+        List<PlayerQuest> playerQuests = playerQuestRepository.findByPlayerIdAndDefinition(playerId, questDefinition);
         PlayerQuest playerQuest = playerQuests.stream()
                 .filter(q -> q.getCompletedAt() == null)
                 .findFirst()
@@ -302,7 +302,7 @@ public class QuestService {
                     ApiErrors.UNKNOWN_QUEST_DEFINITION_MESSAGE + questDefinitionId);
         }
 
-        List<PlayerQuest> playerQuests = playerQuestRepository.findByPlayerIdAndQuestDefinition(playerId, questDefinition);
+        List<PlayerQuest> playerQuests = playerQuestRepository.findByPlayerIdAndDefinition(playerId, questDefinition);
         PlayerQuest playerQuest = playerQuests.stream()
                 .filter(q -> q.getCompletedAt() == null)
                 .findFirst()
