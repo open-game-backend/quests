@@ -93,7 +93,7 @@ public class QuestController {
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
-    @GetMapping("/admin/playerquests")
+    @GetMapping("/admin/playerquests/{playerId}")
     @Operation(summary = "Gets all quests of the specified player, both finished and unfinished.")
     @ApiResponses(value = {
             @ApiResponse(
@@ -105,7 +105,7 @@ public class QuestController {
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
-    @PostMapping("/server/increasequestprogress")
+    @PostMapping("/server/increasequestprogress/{playerId}/{questDefinitionId}")
     @Operation(summary = "Increases the progress of the active quest of the specified definition for the passed player.")
     @ApiResponses(value = {
             @ApiResponse(
@@ -126,7 +126,7 @@ public class QuestController {
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
 
-    @PostMapping("/client/finishquest")
+    @PostMapping("/client/finishquest/{questDefinitionId}")
     @Operation(summary = "Finishes the active quest of the specified definition and claims its rewards.")
     @ApiResponses(value = {
             @ApiResponse(
