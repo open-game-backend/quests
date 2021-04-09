@@ -213,6 +213,11 @@ public class QuestService {
 
                 // Get available quest definitions.
                 List<QuestDefinition> questDefinitions = questDefinitionRepository.findByCategory(questCategory);
+
+                if (questDefinitions.isEmpty()) {
+                    continue;
+                }
+
                 Random random = new Random();
                 QuestDefinition questDefinition = questDefinitions.get(random.nextInt(questDefinitions.size()));
 
