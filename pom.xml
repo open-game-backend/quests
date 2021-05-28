@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>de.opengamebackend</groupId>
 	<artifactId>quests</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>0.0.2-SNAPSHOT</version>
 	<name>quests</name>
 	<description>Provides quests that can be generated for and completed by players.</description>
 	<properties>
